@@ -73,6 +73,7 @@
   .status { font-size: .72rem; color: var(--muted); min-height: 1.2em; }
   .skip { display: inline-flex; align-items: center; gap: 4px; height: 38px; padding: 0 14px 0 18px; border-radius: 999px; background: var(--fill); font-size: .92rem; font-weight: 500; transition: transform .15s cubic-bezier(.3,1.5,.5,1); }
   .skip:active { transform: scale(.94); }
+  .manual { display: flex; gap: 8px; }
   .skip svg { width: 15px; height: 15px; color: var(--muted); }
 
   /* ─── Seri sahnesi: ekranın ortasında büyük alev ─── */
@@ -121,6 +122,10 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M19 10a7 7 0 0 1-14 0"/><path d="M12 17v5"/></svg>
     </button>
     <div class="status" id="status">Dokun ve söyle</div>
+    <div class="manual" id="manual" hidden>
+      <button class="skip" id="mBad">Bilemedim</button>
+      <button class="skip" id="mGood">Doğru söyledim</button>
+    </div>
     <button class="skip" id="skip">Atla<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></button>
   </div>
 
@@ -270,7 +275,7 @@
     shown = []; locked = [];
     card.start = performance.now();
     phase = "ask";
-    base = resLen;            // bu karttan önce söylenenler sayılmaz
+    resetHearing();           // bu karttan önce söylenenler sayılmaz
   }
   function finish(ok, heard) {
     if (phase !== "ask" || !card) return;
@@ -427,59 +432,108 @@
   }
 
   // ─── Dinleme ───────────────────────────────────────────────────────────────
-  // Mikrofon bir kez açılır, kartlar ve mod değişimleri arasında kapanmaz. Her kart açıldığı andan sonraki sözleri dinler
-  // (base). Doğru söylendiği an kabul edilir; kişi susunca (1,6 sn) karar verilir. Tanıyıcının 10 tahminine bakılır.
-  // Not: Tarayıcılar çift tıklanıp açılan dosyada (file://) mikrofon iznini kaydetmez; oyun bir https linkinden açılınca
-  // izin bir kez sorulur. iPhone'da ses tanıma için Ayarlar'da Dikte (Siri) açık olmalı.
+  // Tarayıcılar sonuçları farklı verir:
+  //  • Bilgisayar Chrome: her cümle ayrı sonuç (birleştirilir)
+  //  • Android Chrome: her yeni sonuç önceki sözlerin tamamını da içerir (birleştirilirse katlanır)
+  //  • iPhone Safari: tek sonuç büyür, kesin sonuç gelmeyebilir; dinleme kapanınca dokunmadan açılmayabilir
+  // Bu yüzden oturumun tamamı metin olarak çıkarılır (tekrarlar ayıklanır) ve her kart, açıldığı andaki metinden
+  // sonra söylenenleri dinler. Dinleme kendiliğinden kapanırsa yeniden açılır; o karta söylenenler korunur.
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  let rec = null, active = false, granted = false, base = 0, resLen = 0;
+  const IN_APP = /Instagram|FBAN|FBAV|FB_IAB|Line\/|TikTok|musical_ly|Snapchat|WhatsApp|; wv\)/i.test(navigator.userAgent);
+  const IOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  let rec = null, active = false, granted = false, starting = false;
+  let baseFull = "", lastFull = "", carry = "";
   const status = (t) => ($("status").textContent = t);
+  const norm = (s) => String(s || "").toLowerCase().replace(/\s+/g, " ").trim();
+  // Oturumun tüm metni: Android'in tekrar eden sonuçları ayıklanır
+  function fullText(results, alt) {
+    let acc = "";
+    for (let i = 0; i < results.length - 1; i++) {
+      const f = norm(results[i][0] && results[i][0].transcript);
+      if (!f) continue;
+      acc = !acc ? f : f.startsWith(acc) ? f : acc + " " + f;
+    }
+    const lastR = results[results.length - 1];
+    const last = norm((lastR[alt] || lastR[0]).transcript);
+    return !acc ? last : last.startsWith(acc) ? last : acc + " " + last;
+  }
+  // Kart açıldıktan sonra söylenen kısım
+  function after(full, base) {
+    if (!base) return full;
+    if (full.startsWith(base)) return full.slice(base.length).trim();
+    let k = 0; while (k < full.length && k < base.length && full[k] === base[k]) k++;
+    return full.slice(k).trim();
+  }
   function check(cands, final) {
     if (!card || phase !== "ask") return;
-    showHeard(cands[0] || "", false);
+    cands = cands.map(norm).filter(Boolean);
+    if (!cands.length) return;
+    showHeard(cands[0], false);
     const T = card.target.join("");
     const ok = card.kind === "letters" ? cands.some((c) => lettersMatch(heardLetters(c), T)) : cands.some((c) => spokenNumber(c) === card.x);
     if (ok) return finish(true, cands[0]);
     clearTimeout(silenceT);
-    if (parse(cands[0] || "").length >= card.target.length + 2) return finish(false, cands[0]);
+    if (parse(cands[0]).length >= card.target.length + 2) return finish(false, cands[0]);
     const g = gen, said = cands[0];
-    silenceT = setTimeout(() => { if (g === gen) finish(false, said); }, final ? 1600 : 2600);
+    silenceT = setTimeout(() => { if (g === gen) finish(false, said); }, final ? 1600 : 2200);
   }
+  const ERR = {
+    "audio-capture": "Mikrofon bulunamadı",
+    network: "Ses tanıma için internet gerekli",
+    "language-not-supported": "Bu tarayıcı İngilizce ses tanımayı desteklemiyor",
+  };
   function listen() {
-    if (!SR || !active || rec) return;
-    rec = new SR(); rec.lang = "en-US"; rec.continuous = true; rec.interimResults = true; rec.maxAlternatives = 10;
-    base = 0; resLen = 0;
-    rec.onstart = () => { granted = true; document.body.classList.add("listening"); status("Dinliyorum"); };
-    rec.onresult = (e) => {
-      resLen = e.results.length;
+    if (!SR || !active || rec || starting) return;
+    let r;
+    try { r = new SR(); } catch { active = false; status("Ses tanıma başlatılamadı"); return; }
+    rec = r; starting = true;
+    r.lang = "en-US"; r.continuous = true; r.interimResults = true; r.maxAlternatives = 5;
+    baseFull = ""; lastFull = "";
+    r.onstart = () => { starting = false; granted = true; document.body.classList.add("listening"); status("Dinliyorum"); };
+    r.onresult = (e) => {
+      if (rec !== r || !e.results.length) return;
+      const lastR = e.results[e.results.length - 1];
+      const alts = Math.max(1, lastR.length);
+      const fulls = Array.from({ length: alts }, (_, a) => fullText(e.results, a));
+      lastFull = fulls[0];
       if (!card || phase !== "ask") return;
-      let prefix = "";
-      for (let i = base; i < e.results.length - 1; i++) if (e.results[i].isFinal) prefix += e.results[i][0].transcript + " ";
-      const last = e.results[e.results.length - 1];
-      if (e.results.length - 1 < base) return;
-      check([...last].map((a) => (prefix + a.transcript).trim()), last.isFinal);
+      check(fulls.map((f) => (carry + " " + after(f, baseFull)).trim()), lastR.isFinal);
     };
-    rec.onerror = (e) => {
-      if (e.error === "service-not-allowed" && !granted) { active = false; status("iPhone'da Ayarlar › Genel › Klavye › Dikte açık olmalı"); }
-      else if (e.error === "not-allowed" || e.error === "service-not-allowed") { active = false; status(granted ? "Devam için dokun" : "Mikrofon izni verilmedi"); }
-      else if (e.error === "network") { active = false; status("Ses tanıma için internet gerekli"); }
+    r.onerror = (e) => {
+      if (rec !== r) return;
+      if (e.error === "no-speech" || e.error === "aborted") return;            // sessizlik: yeniden açılır
+      if (e.error === "not-allowed" || e.error === "service-not-allowed") {
+        active = false;
+        status(granted ? "Devam için dokun" : IOS ? "İzin yok: Ayarlar › Safari › Mikrofon ve Ayarlar › Genel › Klavye › Dikte açık olmalı" : "Mikrofon izni verilmedi (adres çubuğundaki kilitten izin ver)");
+        return;
+      }
+      active = false; status(ERR[e.error] || "Ses tanıma hatası: " + e.error);
     };
-    rec.onend = () => {
-      rec = null; document.body.classList.remove("listening");
-      if (active) setTimeout(listen, 120); else status(granted ? "Devam için dokun" : "Dokun ve söyle");
+    r.onend = () => {
+      if (rec !== r) return;
+      // Bu karta söylenenler sonraki oturuma taşınır
+      if (card && phase === "ask") carry = (carry + " " + after(lastFull, baseFull)).trim();
+      rec = null; starting = false; document.body.classList.remove("listening");
+      if (active) setTimeout(listen, IOS ? 250 : 120);
+      else if (!/izin|internet|bulunamadı|hata|desteklemiyor/i.test($("status").textContent)) status(granted ? "Devam için dokun" : "Dokun ve söyle");
     };
-    try { rec.start(); } catch { rec = null; active = false; status("Devam için dokun"); }
+    try { r.start(); } catch { rec = null; starting = false; active = false; status("Devam için dokun"); }
   }
   function start() {
-    if (!SR) { status("Ses tanıma için Chrome ya da Safari kullan"); return; }
+    if (!SR) return;
     active = true; listen();
   }
   function stop() {
     active = false; clearTimeout(silenceT);
-    if (rec) { try { rec.stop(); } catch { /* yok */ } }
+    const r = rec; rec = null; starting = false;
+    if (r) { try { r.abort(); } catch { /* yok */ } }
     document.body.classList.remove("listening"); status("Dokun ve söyle");
   }
+  // Yeni kart: o ana kadar söylenenler sayılmaz
+  function resetHearing() { baseFull = lastFull; carry = ""; }
   $("mic").onclick = () => (active ? stop() : start());
+  $("mGood").onclick = () => finish(true, "");
+  $("mBad").onclick = () => finish(false, "");
   $("skip").onclick = () => nextCard();
 
   // ─── Mod ───────────────────────────────────────────────────────────────────
@@ -500,8 +554,11 @@
   window.__hsp = { toWords, spokenNumber, heardLetters, lettersMatch, check: (c, f) => check(c, f), card: () => card, setMode };
   $("fire").innerHTML = FLAME;
   hud(); setMode(S.mode);
-  if (!SR) status("Bu tarayıcı ses tanımayı desteklemiyor");
-  else if (location.protocol === "file:") status("En iyi sonuç için linkten aç");
+  if (!SR) {
+    // Ses tanıması yok (iPhone'da Chrome/Firefox, uygulama içi tarayıcılar): nedeni yazılır, elle oynanabilir
+    status(IN_APP ? "Linki Safari ya da Chrome'da aç" : IOS ? "iPhone'da Safari ile aç" : "Ses tanıma için Chrome ya da Safari kullan");
+    $("mic").hidden = true; $("manual").hidden = false;
+  }
 })();
 </script>
 </body>
