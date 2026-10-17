@@ -1,0 +1,508 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Harf & Sayı</title>
+<style>
+  :root { --bg: #fff; --text: #1d1d1f; --muted: #86868b; --line: #e5e5ea; --fill: #f2f2f7; --good: #248a3d; --bad: #d70015; --fire: #ff5a1f; --gold: #ffc233; --mono: ui-monospace, "SF Mono", Menlo, monospace; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #000; --text: #f5f5f7; --muted: #8e8e93; --line: #2c2c2e; --fill: #1c1c1e; --good: #30d158; --bad: #ff453a; } }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  /* Sayfa ekran yüksekliğini hiç geçmez, kaymaz */
+  html, body { margin: 0; height: 100%; overflow: hidden; overscroll-behavior: none; background: var(--bg); color: var(--text); }
+  body { height: 100vh; height: 100svh; display: flex; flex-direction: column; align-items: center; font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Inter, sans-serif; -webkit-font-smoothing: antialiased; -webkit-user-select: none; user-select: none; }
+  button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+
+  .top { width: 100%; max-width: 420px; padding: max(16px, env(safe-area-inset-top)) 20px 0; display: flex; align-items: center; justify-content: space-between; }
+  .seg { display: grid; grid-template-columns: 1fr 1fr; width: 200px; padding: 2px; border-radius: 9px; background: var(--fill); }
+  .seg button { padding: 6px 0; border-radius: 7px; font-size: .9rem; font-weight: 500; color: var(--muted); transition: color .2s; }
+  .seg button.on { background: var(--bg); color: var(--text); border: .5px solid var(--line); }
+  .score { min-width: 64px; display: flex; flex-direction: column; line-height: 1.1; }
+  .score b { font-size: 1.05rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .score span { font-size: .68rem; color: var(--muted); }
+  .score.right { align-items: flex-end; }
+  .score.bump b { animation: bump .4s cubic-bezier(.3,1.8,.5,1); }
+
+  main { flex: 1; min-height: 0; overflow: hidden; width: 100%; max-width: 420px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 16px 20px; position: relative; }
+  .streak { height: 32px; margin-bottom: 14px; display: flex; align-items: center; gap: 6px; font-weight: 700; font-size: 1.1rem; font-variant-numeric: tabular-nums; transition: opacity .25s; }
+  .streak .fire { width: 18px; }
+  .streak.off { opacity: 0; }
+  .streak.pop { animation: bump .5s cubic-bezier(.3,1.8,.5,1); }
+  @keyframes bump { 40% { transform: scale(1.4); } }
+  .prompt { font-size: clamp(2.6rem, 13vw, 4.2rem); font-weight: 600; letter-spacing: -.01em; line-height: 1.1; word-break: break-word; transition: color .2s, opacity .15s; }
+  .prompt.mono { font-family: var(--mono); font-weight: 500; letter-spacing: .04em; }
+  .prompt.long { font-size: clamp(2rem, 10vw, 3.2rem); }
+  .prompt.enter { animation: cardIn .34s cubic-bezier(.2,.8,.2,1); }
+  @keyframes cardIn { from { opacity: 0; transform: translateY(10px) scale(.98); } }
+  .prompt.good { color: var(--good); animation: okPulse .38s cubic-bezier(.3,1.6,.5,1); }
+  @keyframes okPulse { 45% { transform: scale(1.07); } }
+  .prompt.bad { color: var(--bad); animation: noShake .4s ease-out; }
+  @keyframes noShake { 20% { transform: translateX(-7px); } 45% { transform: translateX(6px); } 70% { transform: translateX(-3px); } }
+  .heard { margin-top: 14px; min-height: 2.2em; display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 4px; transition: opacity .15s; }
+  .heard .l { font-family: var(--mono); font-weight: 600; font-size: 1.35rem; min-width: 20px; transition: color .15s; }
+  .heard .l.ok { color: var(--good); }
+  .heard .l.no { color: var(--bad); }
+  .heard .l.p { color: var(--muted); opacity: .55; }
+  .heard .l.new { animation: rise .18s ease-out; }
+  @keyframes rise { from { opacity: 0; transform: translateY(4px); } }
+  .answer { margin-top: 10px; min-height: 64px; font-size: .95rem; }
+  .answer > * { animation: cardIn .3s cubic-bezier(.2,.8,.2,1); }
+  .letters { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 10px; }
+  .letters span { display: inline-flex; flex-direction: column; align-items: center; min-width: 26px; }
+  .letters b { font-family: var(--mono); font-weight: 600; font-size: 1.05rem; }
+  .letters i { font-style: normal; color: var(--muted); font-size: .78rem; }
+  .words { font-weight: 500; }
+  .phon { color: var(--muted); font-size: .85rem; margin-top: 2px; }
+  .plus { position: absolute; left: 50%; top: 42%; font-weight: 800; font-size: 1.3rem; color: var(--fire); pointer-events: none; animation: plus .9s cubic-bezier(.2,.7,.3,1) forwards; }
+  @keyframes plus { 0% { opacity: 0; transform: translate(-50%, 10px) scale(.6); } 20% { opacity: 1; transform: translate(-50%, -6px) scale(1.15); } 100% { opacity: 0; transform: translate(-50%, -70px) scale(1); } }
+
+  .bottom { width: 100%; max-width: 420px; padding: 0 20px max(22px, env(safe-area-inset-bottom)); display: flex; flex-direction: column; align-items: center; gap: 12px; }
+  .stat { display: flex; gap: 8px; justify-content: center; min-height: 28px; margin-bottom: 14px; }
+  .stat span { display: inline-flex; gap: 4px; height: 28px; padding: 0 12px; align-items: center; border-radius: 999px; background: var(--fill); font-size: .74rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .stat b { color: var(--text); font-weight: 600; font-size: .8rem; }
+  .mic { position: relative; margin: 6px 0; width: 76px; height: 76px; border-radius: 50%; display: grid; place-items: center; background: var(--text); color: var(--bg); transition: background .25s, transform .15s cubic-bezier(.3,1.5,.5,1); }
+  .mic:active { transform: scale(.92); }
+  .mic svg { width: 30px; height: 30px; }
+  .mic::after { content: ""; position: absolute; inset: -6px; border-radius: 50%; border: 1.5px solid var(--line); transition: border-color .25s; }
+  body.listening .mic { background: var(--bad); color: #fff; }
+  body.listening .mic::after { border-color: var(--bad); animation: breathe 1.6s ease-in-out infinite; }
+  body.listening .mic svg { animation: beat 1.2s ease-in-out infinite; }
+  @keyframes beat { 50% { transform: scale(.88); } }
+  @keyframes breathe { 50% { transform: scale(1.08); opacity: .35; } }
+  .status { font-size: .72rem; color: var(--muted); min-height: 1.2em; }
+  .skip { display: inline-flex; align-items: center; gap: 4px; height: 38px; padding: 0 14px 0 18px; border-radius: 999px; background: var(--fill); font-size: .92rem; font-weight: 500; transition: transform .15s cubic-bezier(.3,1.5,.5,1); }
+  .skip:active { transform: scale(.94); }
+  .skip svg { width: 15px; height: 15px; color: var(--muted); }
+
+  /* ─── Seri sahnesi: ekranın ortasında büyük alev ─── */
+  .scene { position: fixed; inset: 0; z-index: 10; pointer-events: none; display: grid; place-items: center; overflow: hidden; }
+  .scene .tint { position: absolute; inset: 0; background: var(--fire); opacity: 0; }
+  .scene .ring { position: absolute; width: 160px; height: 160px; border-radius: 50%; border: 4px solid var(--fire); opacity: 0; }
+  .scene .spark { position: absolute; width: 10px; height: 10px; border-radius: 50%; }
+  .scene .hero { position: relative; display: flex; flex-direction: column; align-items: center; margin-top: -6vh; }
+  .scene .big { width: clamp(9rem, 46vw, 13rem); }
+  .scene .num { font-size: clamp(3.6rem, 19vw, 5.6rem); font-weight: 800; line-height: 1; margin-top: -10px; letter-spacing: -.03em; font-variant-numeric: tabular-nums; color: var(--text); }
+  .scene .tag { margin-top: 8px; font-size: clamp(1.4rem, 7vw, 2rem); font-weight: 900; font-style: italic; letter-spacing: .01em; color: #ff9500; }
+  .scene .tag.red { color: var(--bad); }
+  .scene .level { font-size: clamp(2.6rem, 14vw, 4rem); font-weight: 900; font-style: italic; letter-spacing: -.02em; color: var(--text); }
+  .scene .level small { display: block; font-size: .32em; font-style: normal; font-weight: 700; color: var(--muted); letter-spacing: .12em; text-transform: uppercase; margin-bottom: 6px; }
+  .flame { display: block; width: 100%; height: auto; transform-origin: 50% 92%; }
+  .flame .o { fill: var(--fire); }
+  .flame .i { fill: var(--gold); }
+  .scene .big .flame { animation: flicker .38s ease-in-out infinite alternate; }
+  @keyframes flicker { from { transform: scale(1, 1) skewX(0); } to { transform: scale(.96, 1.07) skewX(-3deg); } }
+  .rain { position: fixed; bottom: -80px; z-index: 9; pointer-events: none; display: block; animation: rainUp var(--t) cubic-bezier(.2,.6,.4,1) var(--d) forwards; }
+  @keyframes rainUp { 0% { transform: translateY(0) rotate(0); opacity: 1; } 75% { opacity: 1; } 100% { transform: translateY(-115vh) rotate(var(--r)); opacity: 0; } }
+  body.scene-on main .prompt, body.scene-on main .heard, body.scene-on main .answer { opacity: .1; }
+  @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+</style>
+</head>
+<body>
+  <div class="top">
+    <div class="score"><b id="scoreN">0</b><span>puan</span></div>
+    <div class="seg">
+      <button data-mode="letters" class="on">Kelime</button>
+      <button data-mode="numbers">Sayı</button>
+    </div>
+    <div class="score right"><b id="levelN">1</b><span>seviye</span></div>
+  </div>
+
+  <main id="main">
+    <div class="streak off" id="streak"><span class="fire" id="fire"></span><span id="streakN">0</span></div>
+    <div class="prompt" id="prompt">…</div>
+    <div class="heard" id="heard"></div>
+    <div class="answer" id="answer"></div>
+  </main>
+
+  <div class="bottom">
+    <div class="stat" id="stat"></div>
+    <button class="mic" id="mic" aria-label="Mikrofon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M19 10a7 7 0 0 1-14 0"/><path d="M12 17v5"/></svg>
+    </button>
+    <div class="status" id="status">Dokun ve söyle</div>
+    <button class="skip" id="skip">Atla<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></button>
+  </div>
+
+<script>
+(() => {
+  "use strict";
+  // ─── Veri ──────────────────────────────────────────────────────────────────
+  const LETTER = { A: "ey", B: "bi", C: "si", D: "di", E: "i", F: "ef", G: "ci", H: "eyç", I: "ay", J: "cey", K: "key", L: "el", M: "em", N: "en",
+    O: "ou", P: "pi", Q: "kyu", R: "ar", S: "es", T: "ti", U: "yu", V: "vi", W: "dabıl yu", X: "eks", Y: "vay", Z: "zi" };
+  const DIGIT = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine"];
+  const NAMES = ("James Oliver Sophia Emma Liam Noah Olivia Ava Mia Ethan Lucas Mason Harper Charlotte Amelia Henry Jack Daniel Michael William " +
+    "Benjamin Samuel David Joseph Owen Dylan Luke Gabriel Isaac Julian Levi Andrew Ryan Nathan Aaron Thomas Charles Caleb Hunter Connor Leo Hudson " +
+    "Robert Nolan Ezra Jordan Austin Adam Evan Xavier Parker Roman Jason Zoe Lily Ella Grace Chloe Victoria Riley Madison Layla Nora Hazel Stella " +
+    "Leah Willow Lucy Audrey Bella Claire Naomi Elena Anna Maya Ruby Ivy Alice Sarah Quinn Eva Piper Sophie Clara Julia Jade Maria Iris Ahmet " +
+    "Mehmet Ali Emre Can Deniz Elif Zeynep Burak Kerem Selin Mert Cem Ece Berk Defne Arda Eren Kaan Melis Ozan Pelin Sena Tolga Yusuf Zehra Hakan " +
+    "Murat Serkan Volkan Kemal Leyla Baran Cansu Derya Esra Gizem Levent Onur Sinan Umut Yavuz").split(" ");
+  const WORDS = ("apple banana water house garden yellow quick quiet queen jacket jungle village very wave view whale yacht zebra question quality " +
+    "equal juice judge joke journey keyboard kitchen laptop lemon level window winter wizard wolf youth zone puzzle jazz quiz square expert extra " +
+    "exam taxi fox box six hello world happy family friend school teacher student book pencil paper table chair phone camera music movie coffee " +
+    "sugar bread cheese orange purple green black white brown silver golden morning evening weekend holiday summer autumn spring flower forest " +
+    "river ocean island mountain desert valley bridge castle tower market airport station ticket passport hotel booking address password email " +
+    "account manager engineer doctor driver garage vehicle bicycle beautiful different delicious expensive february wednesday thursday saturday " +
+    "january august october november december monday tuesday friday sunday guitar violin energy galaxy oxygen jelly").split(" ");
+
+  const KEY = "harf-sayi-v4";
+  const fresh = () => ({ mode: "letters", letterErr: {}, featErr: {}, cards: 0, correct: 0, best: 0, score: 0 });
+  let S; try { S = Object.assign(fresh(), JSON.parse(localStorage.getItem(KEY) || "{}")); } catch { S = fresh(); }
+  const save = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch { /* özel pencere */ } };
+  const $ = (id) => document.getElementById(id);
+  const rnd = (n) => Math.floor(Math.random() * n);
+  const pick = (a) => a[rnd(a.length)];
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+  const calm = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const LEVEL_PTS = 200;
+  const levelOf = (pts) => Math.floor(pts / LEVEL_PTS) + 1;
+
+  // ─── Sayılar ───────────────────────────────────────────────────────────────
+  const ONES = ["", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve", "thirteen", "fourteen",
+    "fifteen", "sixteen", "seventeen", "eighteen", "nineteen"];
+  const TENS = ["", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"];
+  const u100 = (x) => (x < 20 ? ONES[x] : TENS[Math.floor(x / 10)] + (x % 10 ? "-" + ONES[x % 10] : ""));
+  const u1000 = (x) => { const h = Math.floor(x / 100), r = x % 100; return [h ? ONES[h] + " hundred" : "", r ? u100(r) : ""].filter(Boolean).join(" "); };
+  const toWords = (x) => { if (!x) return "zero"; const t = Math.floor(x / 1000), r = x % 1000; return [t ? u1000(t) + " thousand" : "", r ? u1000(r) : ""].filter(Boolean).join(" "); };
+  const NUM_PHON = { zero: "ziro", one: "wan", two: "tu", three: "tri", four: "for", five: "fayv", six: "siks", seven: "sevın", eight: "eyt", nine: "nayn",
+    ten: "ten", eleven: "ilevın", twelve: "twelv", thirteen: "törtiin", fourteen: "fortiin", fifteen: "fiftiin", sixteen: "sikstiin", seventeen: "sevıntiin",
+    eighteen: "eytiin", nineteen: "nayntiin", twenty: "twenti", thirty: "törti", forty: "forti", fifty: "fifti", sixty: "siksti", seventy: "sevınti",
+    eighty: "eyti", ninety: "naynti", hundred: "handrıd", thousand: "tauzınd" };
+  // Konuşmadan sayı: rakamlar ya da kelimeler; tanıyıcının sık yazdığı eş sesliler de sayılır
+  function spokenNumber(s) {
+    const digits = s.replace(/[,\s.]/g, "");
+    if (/^\d+$/.test(digits)) return +digits;
+    const map = { zero: 0, oh: 0, o: 0 }; ONES.forEach((w, i) => w && (map[w] = i)); TENS.forEach((w, i) => w && (map[w] = i * 10));
+    Object.assign(map, { to: 2, too: 2, for: 4, fore: 4, won: 1, ate: 8, tree: 3, free: 3, fourty: 40, nein: 9 });
+    let total = 0, cur = 0, any = false;
+    for (const raw of s.toLowerCase().replace(/-/g, " ").split(/\s+/)) {
+      const w = raw.replace(/[^a-z0-9]/g, "");
+      if (!w || w === "and" || w === "a") continue;
+      if (/^\d+$/.test(w)) { cur += +w; any = true; }
+      else if (w in map) { cur += map[w]; any = true; }
+      else if (w === "hundred") { cur = (cur || 1) * 100; any = true; }
+      else if (w === "thousand") { total += (cur || 1) * 1000; cur = 0; any = true; }
+    }
+    return any ? total + cur : null;
+  }
+
+  // ─── Harf tanıma ───────────────────────────────────────────────────────────
+  const SAID = { a: "A", ay: "A", eh: "A", hey: "A", b: "B", be: "B", bee: "B", c: "C", see: "C", sea: "C", si: "C", d: "D", dee: "D", de: "D",
+    e: "E", ee: "E", f: "F", ef: "F", eff: "F", g: "G", gee: "G", ji: "G", jee: "G", h: "H", aitch: "H", age: "H", i: "I", eye: "I", aye: "I",
+    j: "J", jay: "J", jae: "J", k: "K", kay: "K", okay: "K", ok: "K", l: "L", el: "L", ell: "L", elle: "L", m: "M", em: "M", um: "M",
+    n: "N", en: "N", o: "O", oh: "O", owe: "O", p: "P", pee: "P", pea: "P", q: "Q", queue: "Q", cue: "Q", kew: "Q", r: "R", are: "R", ar: "R", our: "R",
+    s: "S", es: "S", ess: "S", t: "T", tee: "T", tea: "T", u: "U", you: "U", yu: "U", ew: "U", v: "V", vee: "V", w: "W", x: "X", ex: "X",
+    y: "Y", why: "Y", wye: "Y", z: "Z", zed: "Z", zee: "Z",
+    // Türkçe aksanla söylenince sık duyulanlar ("vi" → we, "ay" → hi …)
+    we: "V", vi: "V", wee: "V", hi: "I", pie: "P", pi: "P", ti: "T", di: "D", bi: "B", ci: "G", cey: "J", key: "K", kyu: "Q",
+    eggs: "X", eks: "X", ax: "X", ow: "O", ou: "O", yo: "U", al: "L", am: "M", zi: "Z", vay: "Y", eyc: "H", ach: "H" };
+  function heardLetters(text) {
+    const out = [];
+    const t = text.toLowerCase().replace(/double[\s-]?(u|you|yu)/g, " w ").replace(/[.,!?'"]/g, " ");
+    for (const w of t.split(/[\s-]+/).filter(Boolean)) {
+      if (/^\d+$/.test(w)) out.push(...w.split(""));
+      else if (DIGIT.includes(w)) out.push(String(DIGIT.indexOf(w)));
+      else if (SAID[w]) out.push(SAID[w]);
+      else out.push(...w.toUpperCase().replace(/[^A-Z]/g, "").split(""));
+    }
+    return out.join("");
+  }
+  // Tanıyıcının kendi karıştırdığı aynı kafiyeli harflerde tek fark hoş görülür
+  const RHYME = ["BCDEGPTVZ", "AJK", "FSX", "IY", "MN", "QUW"];
+  const sameRhyme = (a, b) => RHYME.some((g) => g.includes(a) && g.includes(b));
+  function lettersMatch(heard, target) {
+    if (heard === target) return true;
+    if (heard.length !== target.length || target.length < 4) return false;
+    let diff = 0;
+    for (let i = 0; i < target.length; i++) if (heard[i] !== target[i]) { if (!sameRhyme(heard[i], target[i])) return false; diff++; }
+    return diff <= 1;
+  }
+
+  // ─── Kart seçimi (zorlandıkların daha sık gelir) ───────────────────────────
+  const err = (t, k) => t[k] ?? 0.35;
+  const bump = (t, k, v) => { t[k] = err(t, k) * 0.75 + v * 0.25; };
+  function pseudo() {
+    const syl = () => pick([..."bdfghjklmnprstvwyz"]) + pick([..."aeiou"]) + (Math.random() < 0.3 ? pick([..."nrlstm"]) : "");
+    let w = ""; for (let i = 0; i < 2 + rnd(2); i++) w += syl(); return w[0].toUpperCase() + w.slice(1);
+  }
+  const fits = (w) => w.length >= 3 && w.length <= 8;
+  const nextWord = () => { const r = Math.random(); return r < 0.4 ? pick(NAMES.filter(fits)) : r < 0.85 ? pick(WORDS.filter(fits)) : pseudo(); };
+  const lettersOf = (t) => [...t.toUpperCase()].filter((c) => /[A-Z]/.test(c));
+  const score = (keys, table) => { const e = keys.map((k) => err(table, k)); return e.reduce((a, b) => a + b, 0) / e.length * 0.6 + Math.max(...e) * 0.4; };
+  const recent = [];
+  function weighted(cands, fn) {
+    const pool = cands.filter((c) => !recent.includes(c.text)); const p = pool.length ? pool : cands;
+    const w = p.map((c) => 0.05 + fn(c) ** 2 * 4); let r = Math.random() * w.reduce((a, b) => a + b, 0);
+    for (let i = 0; i < p.length; i++) { r -= w[i]; if (r <= 0) return p[i]; } return p[p.length - 1];
+  }
+  function features(x) { const f = [String(x).length + "h"], l = x % 100; if (l >= 13 && l <= 19) f.push("teen"); if (l >= 20 && l % 10 === 0) f.push("ty"); if (x >= 100 && /0/.test(String(x).slice(1))) f.push("0"); return f; }
+  function makeCard(mode) {
+    if (mode === "letters") {
+      const c = weighted(Array.from({ length: 40 }, () => ({ text: nextWord() })), (c) => score([...new Set(lettersOf(c.text))], S.letterErr));
+      return { kind: "letters", text: c.text, target: lettersOf(c.text) };
+    }
+    // 1–5 hane eşit sıklıkta; zorlanılan sayı türleri o hane içinde öne çıkar
+    const d = 1 + rnd(5);
+    const c = weighted(Array.from({ length: 30 }, () => {
+      let x = d === 1 ? rnd(10) : 10 ** (d - 1) + rnd(9 * 10 ** (d - 1));
+      if (d === 2 && Math.random() < 0.3) x = pick([13, 14, 15, 16, 17, 18, 19, 30, 40, 50, 60, 70, 80, 90]);
+      return { text: x.toLocaleString("en-US"), x, features: features(x) };
+    }), (c) => score(c.features, S.featErr));
+    return { kind: "numbers", ...c, target: String(c.x).split(""), words: toWords(c.x) };
+  }
+
+  // ─── Kart akışı ────────────────────────────────────────────────────────────
+  // Her kartın bir kimliği (gen) vardır; eski kartın gecikmiş işleri (sonraki karta geçiş, sessizlik kararı)
+  // mod değişince ya da atlanınca yeni kartı etkilemez.
+  let card = null, gen = 0, n = 0, phase = "ask", streak = 0, combo = 0, advanceT = 0, silenceT = 0;
+  const retry = [];
+  let shown = [], locked = [];
+  function nextCard() {
+    gen++; clearTimeout(advanceT); clearTimeout(silenceT);
+    n++;
+    const i = retry.findIndex((r) => r.due <= n && r.card.kind === S.mode);
+    card = i >= 0 ? retry.splice(i, 1)[0].card : makeCard(S.mode);
+    recent.push(card.text); if (recent.length > 30) recent.shift();
+    const p = $("prompt"); p.textContent = card.text;
+    p.className = "prompt" + (card.kind === "numbers" ? " mono" : "") + (card.text.length > 8 ? " long" : "");
+    void p.offsetWidth; p.classList.add("enter");
+    $("heard").innerHTML = ""; $("answer").innerHTML = "";
+    shown = []; locked = [];
+    card.start = performance.now();
+    phase = "ask";
+    base = resLen;            // bu karttan önce söylenenler sayılmaz
+  }
+  function finish(ok, heard) {
+    if (phase !== "ask" || !card) return;
+    phase = "result"; clearTimeout(silenceT);
+    const t = (performance.now() - card.start) / 1000;
+    const limit = card.kind === "letters" ? 1.5 + card.target.length * 0.9 : 2.5 + card.target.length * 0.6;
+    const v = ok ? (t > limit * 1.6 ? 0.35 : 0) : 1;
+    if (card.kind === "letters") new Set(card.target).forEach((c) => bump(S.letterErr, c, v));
+    else card.features.forEach((f) => bump(S.featErr, f, v));
+    S.cards++;
+    const levelBefore = levelOf(S.score);
+    let pts = 0;
+    if (ok) {
+      S.correct++; streak++; combo = t <= limit ? combo + 1 : 0; S.best = Math.max(S.best, streak);
+      pts = 10 * Math.max(1, combo) + Math.min(streak, 10);
+      S.score += pts;
+    } else { streak = 0; combo = 0; retry.push({ card: { ...card }, due: n + 3 + rnd(3) }); }
+    save(); hud();
+    showHeard(heard || "", true);
+    const pr = $("prompt"); pr.classList.remove("enter", "good", "bad"); void pr.offsetWidth; pr.classList.add(ok ? "good" : "bad");
+    if (navigator.vibrate) navigator.vibrate(ok ? 18 : [30, 40, 30]);
+    let wait = ok ? 750 : 2600;
+    if (ok) {
+      // Ortada sahne varsa puan yazısı uçmaz (sahneyle çakışmasın); puan üst köşede artar
+      const lv = levelOf(S.score);
+      if (lv > levelBefore) { levelScene(lv); wait = 1700; bumpScore(); }
+      else if (streak >= 3) { streakScene(); wait = 1350; bumpScore(); }
+      else plus(pts);
+    } else {
+      $("answer").innerHTML = card.kind === "letters"
+        ? `<div class="letters">${card.target.map((c) => `<span><b>${c}</b><i>${LETTER[c]}</i></span>`).join("")}</div>`
+        : `<div class="words">${card.words}</div><div class="phon">${card.words.split(/[\s-]+/).map((w) => NUM_PHON[w] || w).join(" ")}</div>`;
+    }
+    const g = gen;
+    advanceT = setTimeout(() => { if (g === gen) nextCard(); }, wait);
+  }
+  function hud() {
+    $("scoreN").textContent = S.score.toLocaleString("tr-TR");
+    $("levelN").textContent = levelOf(S.score);
+    $("stat").innerHTML = S.cards ? `<span><b>%${Math.round((S.correct / S.cards) * 100)}</b> doğru</span>${S.best ? `<span><b>${S.best}</b> en iyi seri</span>` : ""}` : "";
+    $("streakN").textContent = streak;
+    $("streak").classList.toggle("off", streak < 2);
+  }
+  function plus(pts) {
+    if (calm) return;
+    const el = document.createElement("div"); el.className = "plus"; el.textContent = "+" + pts;
+    $("main").appendChild(el); setTimeout(() => el.remove(), 950);
+    bumpScore();
+  }
+  function bumpScore() { const s = $("scoreN").parentElement; s.classList.remove("bump"); void s.offsetWidth; s.classList.add("bump"); }
+
+  // ─── Canlı gösterim ────────────────────────────────────────────────────────
+  // Harf ve sayı aynı şekilde gösterilir: doğru sıraya oturan harf/rakam yeşil olarak kilitlenir ve ara tahminlerde silinmez,
+  // emin olunmayanlar soluk gri durur, gösterilen sayısı ara tahminlerde azalmaz. Kırmızı yalnız kesin sonuçta.
+  function parse(text) {
+    if (!card || !text) return [];
+    if (card.kind === "letters") return heardLetters(text).split("");
+    const v = spokenNumber(text);
+    return v === null ? [] : String(v).split("");
+  }
+  function showHeard(text, final) {
+    if (!card) return;
+    const el = $("heard"), h = parse(text), T = card.target;
+    let view;
+    if (final) view = h.map((c, i) => ({ c, cls: c === T[i] ? "ok" : "no" }));
+    else {
+      if (!h.length) return;
+      h.forEach((c, i) => { if (c === T[i]) locked[i] = true; });
+      const len = Math.max(h.length, shown.length);
+      view = Array.from({ length: len }, (_, i) => (locked[i] ? { c: T[i], cls: "ok" } : { c: h[i] ?? shown[i] ?? "", cls: "p" })).filter((x) => x.c);
+    }
+    shown = view.map((x) => x.c);
+    view.forEach((x, i) => {
+      let sp = el.children[i];
+      if (!sp) { sp = document.createElement("span"); sp.className = "l new"; el.appendChild(sp); }
+      if (sp.textContent !== x.c) sp.textContent = x.c;
+      sp.classList.toggle("ok", x.cls === "ok"); sp.classList.toggle("no", x.cls === "no"); sp.classList.toggle("p", x.cls === "p");
+    });
+    while (el.children.length > view.length) el.lastChild.remove();
+  }
+
+  // ─── Sahneler ──────────────────────────────────────────────────────────────
+  const FLAME = `<svg class="flame" viewBox="0 0 24 28" aria-hidden="true"><path class="o" d="M12.6 1.2c.7 3.6-1 5.7-2.9 7.6C7.8 10.7 5 13.2 5 17.6 5 22.8 8.1 26.8 12 26.8s7-4 7-9.2c0-2.9-1.2-5.2-2.6-7 .1 2-.7 3.5-2 4.3.5-4.7-.6-9.4-1.8-13.7z"/><path class="i" d="M12 26.8c-2.4 0-4.2-2-4.2-4.6 0-2.4 1.7-3.8 2.9-5.3.2 1.5 1.1 2.4 2.2 2.8-.1-1.4.4-2.9 1.5-4 1.1 1.8 1.8 3.6 1.8 5.4 0 3.2-1.8 5.7-4.2 5.7z"/></svg>`;
+  const ease = "cubic-bezier(.2,.9,.2,1)";
+  function stage(inner) {
+    document.querySelectorAll(".scene").forEach((x) => x.remove());
+    const sc = document.createElement("div"); sc.className = "scene";
+    sc.innerHTML = `<div class="tint"></div><div class="ring"></div><div class="ring"></div>${inner}`;
+    document.body.appendChild(sc); document.body.classList.add("scene-on");
+    // Ekran kısa bir an ısınır, dalgalar yayılır, kıvılcımlar saçılır
+    sc.querySelector(".tint").animate([{ opacity: 0 }, { opacity: 0.1 }, { opacity: 0 }], { duration: 700, easing: "ease-out" });
+    sc.querySelectorAll(".ring").forEach((r, i) =>
+      r.animate([{ transform: "scale(.2)", opacity: 0.9 }, { transform: "scale(3.2)", opacity: 0 }], { duration: 750, delay: 80 + i * 140, easing: "cubic-bezier(.1,.7,.3,1)", fill: "both" }));
+    for (let i = 0; i < 18; i++) {
+      const s = document.createElement("span"); s.className = "spark"; s.style.background = i % 3 ? "var(--fire)" : "var(--gold)";
+      sc.appendChild(s);
+      const a = (i / 18) * Math.PI * 2 + Math.random() * 0.3, d = 110 + Math.random() * 130, sz = 0.5 + Math.random() * 0.9;
+      s.animate([{ transform: `translate(0,0) scale(${sz})`, opacity: 1 }, { transform: `translate(${Math.cos(a) * d}px, ${Math.sin(a) * d}px) scale(0)`, opacity: 0 }],
+        { duration: 650 + Math.random() * 300, delay: 90, easing: "cubic-bezier(.1,.8,.3,1)", fill: "both" });
+    }
+    return sc;
+  }
+  function endStage(sc, after) {
+    setTimeout(() => { document.body.classList.remove("scene-on"); }, after - 250);
+    setTimeout(() => sc.remove(), after + 100);
+  }
+  function streakScene() {
+    if (calm) return;
+    const milestone = streak % 5 === 0;
+    const tag = milestone ? `${streak} SERİ!` : combo >= 2 ? `HIZLI ×${combo}` : "";
+    const sc = stage(`<div class="hero"><div class="big">${FLAME}</div><div class="num">${streak - 1}</div>${tag ? `<div class="tag${milestone ? " red" : ""}">${tag}</div>` : ""}</div>`);
+    const hero = sc.querySelector(".hero"), num = sc.querySelector(".num"), tg = sc.querySelector(".tag");
+    // Alev çarpar, yaylanır
+    hero.animate([
+      { transform: "scale(.1) rotate(-18deg)", opacity: 0 },
+      { transform: "scale(1.25) rotate(6deg)", opacity: 1, offset: 0.45 },
+      { transform: "scale(.94) rotate(-3deg)", offset: 0.7 },
+      { transform: "scale(1) rotate(0)", opacity: 1 },
+    ], { duration: 520, easing: ease, fill: "both" });
+    // Sayı bir artar
+    setTimeout(() => { num.textContent = streak; num.animate([{ transform: "scale(1.6)" }, { transform: "scale(1)" }], { duration: 320, easing: "cubic-bezier(.3,1.8,.5,1)" }); }, 360);
+    if (tg) tg.animate([{ transform: "scale(.3) translateY(14px)", opacity: 0 }, { transform: "scale(1.15)", opacity: 1, offset: 0.6 }, { transform: "scale(1)", opacity: 1 }], { duration: 420, delay: 300, easing: "cubic-bezier(.3,1.6,.5,1)", fill: "both" });
+    // Sonunda alev küçülüp üstteki seri sayacına uçar
+    setTimeout(() => {
+      const from = hero.getBoundingClientRect(), to = $("fire").getBoundingClientRect();
+      const dx = to.left + to.width / 2 - (from.left + from.width / 2), dy = to.top + to.height / 2 - (from.top + from.height / 2);
+      hero.animate([{ transform: "translate(0,0) scale(1)", opacity: 1 }, { transform: `translate(${dx}px, ${dy}px) scale(.12)`, opacity: 0.3 }], { duration: 380, easing: "cubic-bezier(.6,0,.4,1)", fill: "forwards" });
+      setTimeout(() => { const s = $("streak"); s.classList.remove("pop"); void s.offsetWidth; s.classList.add("pop"); }, 360);
+    }, 880);
+    if (milestone) rain();
+    endStage(sc, 1300);
+  }
+  function levelScene(lv) {
+    if (calm) return;
+    const sc = stage(`<div class="hero"><div class="level"><small>Yeni seviye</small>SEVİYE ${lv}</div></div>`);
+    const hero = sc.querySelector(".hero");
+    hero.animate([
+      { transform: "scale(.2) rotate(-10deg)", opacity: 0 },
+      { transform: "scale(1.2) rotate(3deg)", opacity: 1, offset: 0.5 },
+      { transform: "scale(1)", opacity: 1, offset: 0.7 },
+      { transform: "scale(1)", opacity: 1, offset: 0.85 },
+      { transform: "scale(1.4)", opacity: 0 },
+    ], { duration: 1600, easing: ease, fill: "both" });
+    rain();
+    endStage(sc, 1650);
+  }
+  function rain() {
+    for (let i = 0; i < 16; i++) {
+      const f = document.createElement("span"); f.className = "rain"; f.innerHTML = FLAME;
+      f.style.left = 4 + Math.random() * 88 + "vw"; f.style.width = 22 + Math.random() * 34 + "px";
+      f.style.setProperty("--t", 1.3 + Math.random() * 0.7 + "s"); f.style.setProperty("--d", Math.random() * 0.35 + "s"); f.style.setProperty("--r", (Math.random() - 0.5) * 80 + "deg");
+      document.body.appendChild(f); setTimeout(() => f.remove(), 2600);
+    }
+  }
+
+  // ─── Dinleme ───────────────────────────────────────────────────────────────
+  // Mikrofon bir kez açılır, kartlar ve mod değişimleri arasında kapanmaz. Her kart açıldığı andan sonraki sözleri dinler
+  // (base). Doğru söylendiği an kabul edilir; kişi susunca (1,6 sn) karar verilir. Tanıyıcının 10 tahminine bakılır.
+  // Not: Tarayıcılar çift tıklanıp açılan dosyada (file://) mikrofon iznini kaydetmez; oyun bir https linkinden açılınca
+  // izin bir kez sorulur. iPhone'da ses tanıma için Ayarlar'da Dikte (Siri) açık olmalı.
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  let rec = null, active = false, granted = false, base = 0, resLen = 0;
+  const status = (t) => ($("status").textContent = t);
+  function check(cands, final) {
+    if (!card || phase !== "ask") return;
+    showHeard(cands[0] || "", false);
+    const T = card.target.join("");
+    const ok = card.kind === "letters" ? cands.some((c) => lettersMatch(heardLetters(c), T)) : cands.some((c) => spokenNumber(c) === card.x);
+    if (ok) return finish(true, cands[0]);
+    clearTimeout(silenceT);
+    if (parse(cands[0] || "").length >= card.target.length + 2) return finish(false, cands[0]);
+    const g = gen, said = cands[0];
+    silenceT = setTimeout(() => { if (g === gen) finish(false, said); }, final ? 1600 : 2600);
+  }
+  function listen() {
+    if (!SR || !active || rec) return;
+    rec = new SR(); rec.lang = "en-US"; rec.continuous = true; rec.interimResults = true; rec.maxAlternatives = 10;
+    base = 0; resLen = 0;
+    rec.onstart = () => { granted = true; document.body.classList.add("listening"); status("Dinliyorum"); };
+    rec.onresult = (e) => {
+      resLen = e.results.length;
+      if (!card || phase !== "ask") return;
+      let prefix = "";
+      for (let i = base; i < e.results.length - 1; i++) if (e.results[i].isFinal) prefix += e.results[i][0].transcript + " ";
+      const last = e.results[e.results.length - 1];
+      if (e.results.length - 1 < base) return;
+      check([...last].map((a) => (prefix + a.transcript).trim()), last.isFinal);
+    };
+    rec.onerror = (e) => {
+      if (e.error === "service-not-allowed" && !granted) { active = false; status("iPhone'da Ayarlar › Genel › Klavye › Dikte açık olmalı"); }
+      else if (e.error === "not-allowed" || e.error === "service-not-allowed") { active = false; status(granted ? "Devam için dokun" : "Mikrofon izni verilmedi"); }
+      else if (e.error === "network") { active = false; status("Ses tanıma için internet gerekli"); }
+    };
+    rec.onend = () => {
+      rec = null; document.body.classList.remove("listening");
+      if (active) setTimeout(listen, 120); else status(granted ? "Devam için dokun" : "Dokun ve söyle");
+    };
+    try { rec.start(); } catch { rec = null; active = false; status("Devam için dokun"); }
+  }
+  function start() {
+    if (!SR) { status("Ses tanıma için Chrome ya da Safari kullan"); return; }
+    active = true; listen();
+  }
+  function stop() {
+    active = false; clearTimeout(silenceT);
+    if (rec) { try { rec.stop(); } catch { /* yok */ } }
+    document.body.classList.remove("listening"); status("Dokun ve söyle");
+  }
+  $("mic").onclick = () => (active ? stop() : start());
+  $("skip").onclick = () => nextCard();
+
+  // ─── Mod ───────────────────────────────────────────────────────────────────
+  function setMode(m) {
+    if (!m) return;
+    const changed = S.mode !== m;
+    S.mode = m; save();
+    document.querySelectorAll(".seg button").forEach((b) => b.classList.toggle("on", b.dataset.mode === m));
+    if (changed || !card) nextCard();
+  }
+  document.querySelectorAll(".seg button").forEach((b) => (b.onclick = () => setMode(b.dataset.mode)));
+  document.addEventListener("keydown", (e) => {
+    if (e.metaKey || e.ctrlKey || e.altKey || e.repeat) return;
+    if (e.key === " ") { e.preventDefault(); $("mic").click(); }
+    else if (e.key.toLowerCase() === "n") nextCard();
+  });
+
+  window.__hsp = { toWords, spokenNumber, heardLetters, lettersMatch, check: (c, f) => check(c, f), card: () => card, setMode };
+  $("fire").innerHTML = FLAME;
+  hud(); setMode(S.mode);
+  if (!SR) status("Bu tarayıcı ses tanımayı desteklemiyor");
+  else if (location.protocol === "file:") status("En iyi sonuç için linkten aç");
+})();
+</script>
+</body>
+</html>
